@@ -11,29 +11,74 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jimlambrt/gldap"
+	"gopkg.in/yaml.v3"
 )
 
-var env map[string]string
+//var env map[string]string
+
+type Config struct {
+	Proxy struct {
+		BaseDN   string `yaml:"basedn"`
+		BindDN   string `yaml:"binddn"`
+		Password string `yaml:"password"`
+	} `yaml:"proxy"`
+
+	EndPont1 struct {
+		URI      string `yaml:"uri"`
+		BindDN   string `yaml:"binddn"`
+		Password string `yaml:"password"`
+	} `yaml:"endpoint1"`
+
+	EndPoint2 struct {
+		URI      string `yaml:"uri"`
+		BindDN   string `yaml:"binddn"`
+		Password string `yaml:"password"`
+	} `yaml:"endpoint2"`
+}
+
+var Cfg Config
+
+func InitConfig() {
+	f, err := os.Open("config.yaml")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
+	decoder := yaml.NewDecoder(f)
+	err = decoder.Decode(&Cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// TODO: Check if every value is set. If one is not, try to set it with an env variable
+
+}
 
 func main() {
 
-	env = map[string]string{
-		"P_BASEDN":      os.Getenv("P_BASEDN"),
-		"P_BINDDN":      os.Getenv("P_BINDDN"),
-		"P_PASSWORD":    os.Getenv("P_PASSWORD"),
-		"DIP_URI":       os.Getenv("DIP_URI"),
-		"DIP_BINDDN":    os.Getenv("DIP_BINDDN"),
-		"DIP_PASSWORD":  os.Getenv("DIP_PASSWORD"),
-		"INFN_URI":      os.Getenv("INFN_URI"),
-		"INFN_BINDDN":   os.Getenv("INFN_BINDDN"),
-		"INFN_PASSWORD": os.Getenv("INFN_PASSWORD"),
-	}
+	InitConfig()
 
-	for k, v := range env {
-		if v == "" {
-			log.Fatalln("Missin environment variable", k)
+	/*
+		env = map[string]string{
+			"PROXY_BASEDN":       os.Getenv("PROXY_BASEDN"),
+			"PROXY_BINDDN":       os.Getenv("PROXY_BINDDN"),
+			"PROXY_PASSWORD":     os.Getenv("PROXY_PASSWORD"),
+			"ENDPOINT1_URI":      os.Getenv("ENDPOINT1_URI"),
+			"ENDPOINT1_BINDDN":   os.Getenv("ENDPOINT1_BINDDN"),
+			"ENDPOINT1_PASSWORD": os.Getenv("ENDPOINT1_PASSWORD"),
+			"ENDPOINT2_URI":      os.Getenv("ENDPOINT2_URI"),
+			"ENDPOINT2_BINDDN":   os.Getenv("ENDPOINT2_BINDDN"),
+			"ENDPOINT2_PASSWORD": os.Getenv("ENDPOINT2_PASSWORD"),
 		}
-	}
+
+		for k, v := range env {
+			if v == "" {
+				log.Fatalln("Missin environment variable", k)
+			}
+		}
+	*/
 
 	// create a new server
 	s, err := gldap.NewServer(gldap.WithLogger(hclog.Default()))
@@ -77,7 +122,7 @@ func bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 	log.Printf("ConnID %v: curBindDN: %v", r.ConnectionID(), m.UserName)
 
-	if m.UserName == env["P_BINDDN"] && m.Password == gldap.Password(env["P_PASSWORD"]) {
+	if m.UserName == Cfg.Proxy.BindDN && m.Password == gldap.Password(Cfg.Proxy.Password) {
 		resp.SetResultCode(gldap.ResultSuccess)
 		log.Printf("bind success %v\n", m.UserName)
 		return
@@ -85,7 +130,7 @@ func bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 	// Bind utente dipartimento
 	if strings.Contains(m.UserName, "cn=") && strings.Contains(m.UserName, "ou=users,dc=priv") {
-		l, err := ldap.DialURL(env["DIP_URI"])
+		l, err := ldap.DialURL(Cfg.EndPont1.URI)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -104,7 +149,7 @@ func bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 	// Bind utente INFN
 	if strings.Contains(m.UserName, "infnUUID=") && strings.Contains(m.UserName, "ou=People,dc=infn,dc=it") {
-		l, err := ldap.DialURL(env["INFN_URI"])
+		l, err := ldap.DialURL(Cfg.EndPoint2.URI)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -140,18 +185,18 @@ func searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 	log.Printf("search filter: %s", m.Filter)
 
 	// Ricerca utenti nei due server LDAP
-	if m.BaseDN == env["P_BASEDN"] {
+	if m.BaseDN == Cfg.Proxy.BaseDN {
 
 		dip := false
 		infn := false
 
-		l, err := ldap.DialURL(env["DIP_URI"])
+		l, err := ldap.DialURL(Cfg.EndPont1.URI)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer l.Close()
 
-		err = l.Bind(env["DIP_BINDDN"], env["DIP_PASSWORD"])
+		err = l.Bind(Cfg.EndPont1.BindDN, Cfg.EndPont1.Password)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -182,14 +227,14 @@ func searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 			l.Unbind()
 			l.Close()
 
-			l, err = ldap.DialURL(env["INFN_URI"])
+			l, err = ldap.DialURL(Cfg.EndPoint2.URI)
 			if err != nil {
 				log.Println(err)
 				return
 			}
 			defer l.Close()
 
-			err = l.Bind(env["INFN_BINDDN"], env["INFN_PASSWORD"])
+			err = l.Bind(Cfg.EndPoint2.BindDN, Cfg.EndPoint2.Password)
 			if err != nil {
 				log.Fatal(err)
 			}

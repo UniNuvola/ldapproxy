@@ -1,0 +1,14 @@
+proxy:
+  basedn: "dc=example,dc=com"
+  binddn: "example"
+  password: "example"
+
+endpoint1:
+  uri: "ldap://example.com"
+  binddn: "ep1_binddn"
+  password: "ep1_pass"
+
+endpoint2:
+  uri: "ldap://example.com"
+  binddn: "ep2_binddn"
+  password: "ep2_pass"
