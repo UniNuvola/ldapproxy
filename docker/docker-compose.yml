@@ -1,0 +1,12 @@
+services:
+    ldapproxy:
+        networks:
+            uninuvola:
+                ipv4_address: ${LDAPPROXY_IP}
+        container_name: ldapproxy
+        image: harbor1.fisgeo.unipg.it/uninuvola/ldapproxy:latest
+        command: /ldapproxy -d
+        env_file: ../.env
+networks:
+  uninuvola:
+    external: true
