@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-COPY ../ldapproxy /ldapproxy
+COPY ldapproxy /ldapproxy
 
 EXPOSE 389
 
