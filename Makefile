@@ -1,9 +1,13 @@
 EXE=ldapproxy
-MAINFILE=proxy.go
 
-$(EXE): ./*.go
-	go build -o $(EXE) $(MAINFILE)
+.PHONY: all
+all: $(EXE)
+
+$(EXE): cmd/*.go
+	cd cmd/ && \
+	CGO_ENABLED=0 go build && \
+	mv cmd ../$(EXE)
 
 .PHONY: clean
 clean:
-	rm $(EXE)
+	rm -f $(EXE)
