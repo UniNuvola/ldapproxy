@@ -150,63 +150,63 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 	log.Printf("search scope: %d", m.Scope)
 	log.Printf("search filter: %s", m.Filter)
 
-	if m.BaseDN == c.Proxy.BaseDN {
+	// if m.BaseDN == c.Proxy.BaseDN {
 
-		for _, ep := range c.Endpoints {
-			epName := ep.Name
-			if c.Debug {
-				log.Printf("Searching in %s", epName)
-			}
-
-			l, err := ldap.DialURL(ep.Uri)
-			if err != nil {
-				log.Fatal(err)
-				continue
-			}
-
-			defer l.Close()
-
-			err = l.Bind(ep.BindDN, ep.Password)
-			if err != nil {
-				resp.SetResultCode(gldap.ResultInvalidCredentials)
-				continue
-			}
-
-			searchRequest := ldap.NewSearchRequest(
-				ep.BaseDN,
-				ldap.ScopeWholeSubtree,
-				ldap.NeverDerefAliases,
-				0, 0, false,
-				m.Filter,
-				[]string{"*"},
-				nil,
-			)
-
-			sr, err := l.Search(searchRequest)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-
-			if len(sr.Entries) != 1 {
-				log.Println("User does not exist or too many entries returned in endpoint", epName)
-				continue
-			}
-
-			response := make(map[string][]string)
-			for _, attr := range sr.Entries[0].Attributes {
-				response[attr.Name] = attr.Values
-			}
-
-			entry := r.NewSearchResponseEntry(
-				sr.Entries[0].DN,
-				gldap.WithAttributes(response),
-			)
-			w.Write(entry)
-			resp.SetResultCode(gldap.ResultSuccess)
-			return
+	for _, ep := range c.Endpoints {
+		epName := ep.Name
+		if c.Debug {
+			log.Printf("Searching in %s", epName)
 		}
 
-		resp.SetResultCode(gldap.ResultNoSuchObject)
+		l, err := ldap.DialURL(ep.Uri)
+		if err != nil {
+			log.Fatal(err)
+			continue
+		}
+
+		defer l.Close()
+
+		err = l.Bind(ep.BindDN, ep.Password)
+		if err != nil {
+			resp.SetResultCode(gldap.ResultInvalidCredentials)
+			continue
+		}
+
+		searchRequest := ldap.NewSearchRequest(
+			ep.BaseDN,
+			ldap.ScopeWholeSubtree,
+			ldap.NeverDerefAliases,
+			0, 0, false,
+			m.Filter,
+			[]string{"*"},
+			nil,
+		)
+
+		sr, err := l.Search(searchRequest)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		if len(sr.Entries) != 1 {
+			log.Println("User does not exist or too many entries returned in endpoint", epName)
+			continue
+		}
+
+		response := make(map[string][]string)
+		for _, attr := range sr.Entries[0].Attributes {
+			response[attr.Name] = attr.Values
+		}
+
+		entry := r.NewSearchResponseEntry(
+			sr.Entries[0].DN,
+			gldap.WithAttributes(response),
+		)
+		w.Write(entry)
+		resp.SetResultCode(gldap.ResultSuccess)
+		return
 	}
+
+	resp.SetResultCode(gldap.ResultNoSuchObject)
+	// }
 }
