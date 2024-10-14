@@ -5,8 +5,10 @@ services:
                 ipv4_address: ${LDAPPROXY_IP}
         container_name: ldapproxy
         image: harbor1.fisgeo.unipg.it/uninuvola/ldapproxy:latest
-        command: /ldapproxy -d
+        command: /ldapproxy -d /data/config.yaml
         env_file: ../.env
+        volumes:
+            - ./config.yaml:/data/config.yaml
 networks:
   uninuvola:
     external: true
