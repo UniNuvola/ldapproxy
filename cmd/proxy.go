@@ -173,8 +173,8 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 		}
 
 		searchRequest := ldap.NewSearchRequest(
-			ep.BaseDN,
-			ldap.ScopeWholeSubtree,
+			m.BaseDN,
+			int(m.Scope),
 			ldap.NeverDerefAliases,
 			0, 0, false,
 			m.Filter,
