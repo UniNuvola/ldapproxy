@@ -188,23 +188,23 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 			continue
 		}
 
-		if len(sr.Entries) != 1 {
-			log.Println("User does not exist or too many entries returned in endpoint", epName)
-			continue
-		}
+		if len(sr.Entries) > 0 {
+			for _, e := range sr.Entries {
 
-		response := make(map[string][]string)
-		for _, attr := range sr.Entries[0].Attributes {
-			response[attr.Name] = attr.Values
-		}
+				response := make(map[string][]string)
+				for _, attr := range e.Attributes {
+					response[attr.Name] = attr.Values
+				}
 
-		entry := r.NewSearchResponseEntry(
-			sr.Entries[0].DN,
-			gldap.WithAttributes(response),
-		)
-		w.Write(entry)
-		resp.SetResultCode(gldap.ResultSuccess)
-		return
+				entry := r.NewSearchResponseEntry(
+					e.DN,
+					gldap.WithAttributes(response),
+				)
+				w.Write(entry)
+			}
+			resp.SetResultCode(gldap.ResultSuccess)
+			return
+		}
 	}
 
 	resp.SetResultCode(gldap.ResultNoSuchObject)
