@@ -22,6 +22,7 @@ type EndPoint struct {
 	BaseDN   string
 	BindDN   string
 	Password string
+	Override bool
 }
 
 type Proxy struct {
@@ -56,6 +57,11 @@ func main() {
 		}
 	}
 
+	// Override debug mode
+	if *debug {
+		c.Debug = true
+	}
+
 	// create a new server
 	s, err := gldap.NewServer(gldap.WithLogger(hclog.Default()))
 	if err != nil {
@@ -75,11 +81,10 @@ func main() {
 	// stop server gracefully when ctrl-c, sigint or sigterm occurs
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	select {
-	case <-ctx.Done():
-		log.Printf("\nstopping directory")
-		s.Stop()
-	}
+
+	<-ctx.Done()
+	log.Printf("\nstopping directory")
+	s.Stop()
 }
 
 func (c *ProxyConfig) bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
@@ -96,23 +101,30 @@ func (c *ProxyConfig) bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 		return
 	}
 
-	log.Printf("ConnID %v: curBindDN: %v", r.ConnectionID(), m.UserName)
+	if c.Debug {
+		log.Println("Bind request:")
+		log.Printf("  ConnID %v: curBindDN: %v", r.ConnectionID(), m.UserName)
+	}
 
 	if m.UserName == c.Proxy.BindDN && m.Password == gldap.Password(c.Proxy.Password) {
 		resp.SetResultCode(gldap.ResultSuccess)
-		log.Printf("bind success %v\n", m.UserName)
+		if c.Debug {
+			log.Printf("  bind success to main ldap auth %v\n", m.UserName)
+		}
 		return
 	}
 
 	for _, ep := range c.Endpoints {
 		epName := ep.Name
 		if c.Debug {
-			log.Printf("Trying to bind to %s", epName)
+			log.Printf("  trying to bind to endpoint %s", epName)
 		}
 
 		l, err := ldap.DialURL(ep.Uri)
 		if err != nil {
-			log.Fatal(err)
+			if c.Debug {
+				log.Printf("  unable to connect to endpoint %s: %s, giving up endpoint", epName, err)
+			}
 			continue
 		}
 
@@ -121,11 +133,16 @@ func (c *ProxyConfig) bindHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 		err = l.Bind(m.UserName, string(m.Password))
 		if err != nil {
 			resp.SetResultCode(gldap.ResultInvalidCredentials)
+			if c.Debug {
+				log.Printf("  bind failed to endpoint %s: %s, giving up endpoint", epName, err)
+			}
 			continue
 		}
 
 		resp.SetResultCode(gldap.ResultSuccess)
-		log.Printf("bind success %v\n", m.UserName)
+		if c.Debug {
+			log.Printf("  bind success %v with endpoint %s\n", m.UserName, epName)
+		}
 		return
 	}
 
@@ -140,17 +157,19 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 	}()
 	m, err := r.GetSearchMessage()
 	if err != nil {
-		log.Printf("not a search message: %s", err)
+		if c.Debug {
+			log.Printf("not a search message: %s", err)
+		}
 		return
 	}
 
-	log.Printf("New search started by conn %v", r.ConnectionID())
+	if c.Debug {
+		log.Printf("New search started by conn %v", r.ConnectionID())
 
-	log.Printf("search base dn: %s", m.BaseDN)
-	log.Printf("search scope: %d", m.Scope)
-	log.Printf("search filter: %s", m.Filter)
-
-	// if m.BaseDN == c.Proxy.BaseDN {
+		log.Printf("  search base dn: %s", m.BaseDN)
+		log.Printf("  search scope: %d", m.Scope)
+		log.Printf("  search filter: %s", m.Filter)
+	}
 
 	for _, ep := range c.Endpoints {
 		epName := ep.Name
@@ -160,7 +179,9 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 		l, err := ldap.DialURL(ep.Uri)
 		if err != nil {
-			log.Fatal(err)
+			if c.Debug {
+				log.Printf("  unable to connect to endpoint %s: %s, giving up endpoint", epName, err)
+			}
 			continue
 		}
 
@@ -168,12 +189,21 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 		err = l.Bind(ep.BindDN, ep.Password)
 		if err != nil {
+			log.Printf("  WARNING: bind failed to endpoint %s: %s, giving up endpoint", epName, err)
 			resp.SetResultCode(gldap.ResultInvalidCredentials)
 			continue
 		}
 
+		baseDN := m.BaseDN
+		if ep.Override {
+			if c.Debug {
+				log.Printf("  overriding base dn with %s", ep.BaseDN)
+			}
+			baseDN = ep.BaseDN
+		}
+
 		searchRequest := ldap.NewSearchRequest(
-			m.BaseDN,
+			baseDN,
 			int(m.Scope),
 			ldap.NeverDerefAliases,
 			0, 0, false,
@@ -184,7 +214,9 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 
 		sr, err := l.Search(searchRequest)
 		if err != nil {
-			log.Println(err)
+			if c.Debug {
+				log.Printf("  search failed to endpoint %s: %s, giving up endpoint", epName, err)
+			}
 			continue
 		}
 
@@ -202,11 +234,20 @@ func (c *ProxyConfig) searchHandler(w *gldap.ResponseWriter, r *gldap.Request) {
 				)
 				w.Write(entry)
 			}
+			if c.Debug {
+				log.Printf("  search success in %s", epName)
+			}
 			resp.SetResultCode(gldap.ResultSuccess)
 			return
 		}
+
+		if c.Debug {
+			log.Printf("  no entries found in %s, giving up endpoint", epName)
+		}
 	}
 
+	if c.Debug {
+		log.Printf("search failed in all endpoints")
+	}
 	resp.SetResultCode(gldap.ResultNoSuchObject)
-	// }
 }
