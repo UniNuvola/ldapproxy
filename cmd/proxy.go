@@ -28,6 +28,7 @@ type EndPoint struct {
 type Proxy struct {
 	BaseDN   string
 	BindDN   string
+	Port     string
 	Password string
 }
 
@@ -76,7 +77,7 @@ func main() {
 	r.Bind(c.bindHandler)
 	r.Search(c.searchHandler)
 	s.Router(r)
-	go s.Run(":389")
+	go s.Run(":" + c.Proxy.Port)
 
 	// stop server gracefully when ctrl-c, sigint or sigterm occurs
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
